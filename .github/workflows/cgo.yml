@@ -1,0 +1,78 @@
+name: CGO
+
+on:
+  workflow_dispatch:
+    inputs:
+      ver:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        targets:
+          - "*darwin*"
+          - "*freebsd*"
+          - "*linux*"
+          - "*windows*"
+          - "*android*"
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.0"
+
+      - name: make release dir
+        run: mkdir -p cgo-build-dist/
+
+      - name: build go program
+        id: cgo-action
+        uses: go-cross/cgo-actions@v1
+        with:
+          dir: "."
+          targets: ${{ matrix.targets }}
+          out-dir: cgo-build-dist/
+
+      - name: print Output
+        id: output
+        run: echo "${{ steps.cgo-action.outputs.files }}" && ls -alh cgo-build-dist/
+
+      - name: upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ strategy.job-index }}
+          path: cgo-build-dist/
+
+  release:
+    needs: build
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: cgo-build-dist/
+          merge-multiple: true
+
+      - name: list release files
+        run: ls -l cgo-build-dist/
+
+      - name: release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.ver }}
+          files: |
+            cgo-build-dist/*
+          name: ${{ github.event.inputs.ver }}
+          token: ${{ secrets.CUSTOM_GITHUB_TOKEN }}
